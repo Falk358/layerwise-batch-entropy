@@ -1,0 +1,16 @@
+program: train.py
+method: grid
+project: "lbe_prune"
+entity: maxdanelli
+name: "Experiment FNN - LBE prune"
+description: "Training of FNN with final pruning (test run to see values)"
+metric:
+  name: test/accuracy
+  goal: maximize
+parameters:
+  depth:
+    values: [10]
+  learning_rate:
+    values: [1e-4]
+  epochs:
+    values: [10]
