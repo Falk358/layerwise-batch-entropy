@@ -1,9 +1,10 @@
-from __future__ import print_function
+from __future__ import print_function 
 import argparse
 import torch
 import copy
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.utils.prune as prune
 import torch.optim as optim
 import torch_optimizer as optim_special
 from torchvision import datasets, transforms
@@ -42,6 +43,7 @@ parser.add_argument('--log_interval', type=int, default=50, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--save_model', action='store_true', default=False,
                     help='For Saving the current Model')
+parser.add_argument('--lbe_threshold', type=float, default=0.2, help='threshold of layerwise batch entropy chosen for pruning (removing) layers; values lower are removed')
 args = parser.parse_args()
 
 
@@ -170,7 +172,7 @@ def test(name, model, device, test_loader, criterion, seen_samples):
     return test_acc
 
 
-def prune(model, lbe_threshold, train_loader, device):
+def prune_lbe(model, lbe_threshold, train_loader, device):
     # get a single batch from dataloader
     batch = next(iter(train_loader))
     batch_data, batch_labels = batch
@@ -178,11 +180,59 @@ def prune(model, lbe_threshold, train_loader, device):
 
     output, A = model(batch_data)
     layerwise_batch_entropy = []
+
     for activations_at_layer in A:
         batch_entropy_at_layer = batch_entropy(activations_at_layer)
         layerwise_batch_entropy.append(batch_entropy_at_layer)
-    for layer_index, entropy in enumerate(layerwise_batch_entropy):
-        print(f"batch entropy at layer {layer_index+1}: {entropy}; threshold is {lbe_threshold}\n")
+
+    log_data = []
+    log_columns = ["layer_index", "layerwise_batch_entropy", "was removed from original Network"]
+    for layer_index, layer in enumerate(model.fcs):
+        removed = False
+        entropy = layerwise_batch_entropy[layer_index]
+        if entropy < lbe_threshold:
+            prune.random_unstructured(layer, "weight", amount = 1.0)
+            prune.random_unstructured(layer, "bias", amount = 1.0)
+            prune.remove(layer, "weight")
+            prune.remove(layer, "bias")
+            removed = True
+        print(f"batch entropy at layer {layer_index+1}: {entropy}; threshold is {lbe_threshold}; was removed: {removed}\n")
+        log_data.append([layer_index+1, entropy, removed])
+    
+    log_table = wandb.Table(data = log_data, columns=log_columns)
+    wandb.log(
+        {
+            "prune/lbe_threshold": lbe_threshold,
+            "prune/pruning_information": log_table
+        }
+    )
+    return model
+
+def test_prune(model, device, test_loader, criterion, seen_samples):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.to(device), target.to(device)
+            output, A = model(data)
+            test_loss += criterion((output, A), target)[0]
+            pred = output.argmax(dim=1, keepdim=True)
+            correct += pred.eq(target.view_as(pred)).sum().item()
+
+    test_loss = test_loss / len(test_loader)
+    test_acc = correct / len(test_loader.dataset)
+
+
+    print('\n test set for pruned model: Average loss: {:.4f}, Accuracy: {}/{} ({:.3f}%)\n'.format(
+        test_loss, correct, len(test_loader.dataset), test_acc * 100))
+
+    wandb.log({
+        "prune/accuracy":  test_acc,
+        "prune/loss_ce": test_loss
+    })
+
+    return test_acc
 
 def main():
     # Init dataset
@@ -229,8 +279,8 @@ def main():
             accuracy = test("eval", model, device, eval_loader, criterion, seen_samples)
             accuracy = test("test", model, device, test_loader, criterion, seen_samples)
     
-    prune(model=model, lbe_threshold=50, train_loader=train_loader, device=device)
-
+    model_pruned = prune_lbe(model=model, lbe_threshold=args.lbe_threshold, train_loader=train_loader, device=device)
+    accuracy = test_prune(model_pruned, device, test_loader, criterion, seen_samples)
     return accuracy
 
 

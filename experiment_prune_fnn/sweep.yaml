@@ -3,14 +3,16 @@ method: grid
 project: "lbe_prune"
 entity: maxdanelli
 name: "Experiment FNN - LBE prune"
-description: "Training of FNN with final pruning (test run to see values)"
+description: "Training of FNN with final pruning; grid search over network depths and lbe_threshold values"
 metric:
   name: test/accuracy
   goal: maximize
 parameters:
   depth:
-    values: [10]
+    values: [10, 50, 100]
   learning_rate:
     values: [1e-4]
   epochs:
     values: [10]
+  lbe_threshold:
+    values: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
