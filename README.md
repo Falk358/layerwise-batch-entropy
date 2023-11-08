@@ -1,6 +1,6 @@
 # Improving the Trainability of Deep Neural Networks through Layerwise Batch-Entropy Regularization
 
-This is the official source code for the paper: [Improving the Trainability of Deep Neural Networks through Layerwise Batch-Entropy Regularization](https://openreview.net/pdf?id=LJohl5DnZf).
+This project is a fork of the project associated with the following paper: [Improving the Trainability of Deep Neural Networks through Layerwise Batch-Entropy Regularization](https://openreview.net/pdf?id=LJohl5DnZf). The goal of this project is to use the *Layerwise batch entropy* introduced in the original paper/project, and use it to *prune* existing networks with minimal performance loss. These experiments are found in the folders named `experiment_prune_*`.
 
 Bibtex Entry:
 ```

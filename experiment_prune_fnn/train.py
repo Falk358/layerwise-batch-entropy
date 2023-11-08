@@ -275,12 +275,16 @@ def main():
     epoch = 0
     for epoch in range(args.epochs):
         seen_samples = train(args, model, device, train_loader, optimizer, epoch, criterion, seen_samples)
-        if(epoch % 5 == 0):
-            accuracy = test("eval", model, device, eval_loader, criterion, seen_samples)
-            accuracy = test("test", model, device, test_loader, criterion, seen_samples)
+        #if(epoch % 5 == 0):
+            # accuracy = test("eval", model, device, eval_loader, criterion, seen_samples)
+           # accuracy = test("test", model, device, test_loader, criterion, seen_samples)
     
     model_pruned = prune_lbe(model=model, lbe_threshold=args.lbe_threshold, train_loader=train_loader, device=device)
-    accuracy = test_prune(model_pruned, device, test_loader, criterion, seen_samples)
+    for epoch in range(args.epochs):
+        seen_samples = train(args, model_pruned, device, train_loader, optimizer, epoch, criterion, seen_samples)
+        if(epoch % 5 == 0):
+            accuracy = test("eval", model_pruned, device, eval_loader, criterion, seen_samples)
+            accuracy = test("test", model_pruned, device, test_loader, criterion, seen_samples)
     return accuracy
 
 
