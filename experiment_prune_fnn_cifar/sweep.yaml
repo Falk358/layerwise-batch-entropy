@@ -1,0 +1,20 @@
+program: train.py
+method: grid
+project: "lbe_prune"
+entity: maxdanelli
+name: "Experiment FNN - LBE prune: retraining after pruning"
+description: "Training of FNN with final pruning; grid search over network depths (range 10 - 50) and lbe_threshold values"
+metric:
+  name: test/accuracy
+  goal: maximize
+parameters:
+  depth:
+    values: [10, 15, 20, 25, 30, 35, 40, 45, 50]
+  learning_rate:
+    values: [1e-4]
+  width:
+    values: [900]
+  epochs:
+    values: [100]
+  lbe_threshold:
+    values: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
