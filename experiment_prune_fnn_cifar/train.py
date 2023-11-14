@@ -68,7 +68,7 @@ class FNN(nn.Module):
         self.width = args.width
         self.depth = args.depth
 
-        self.fc_in = nn.Linear(28*28, self.width)
+        self.fc_in = nn.Linear(3*32*32, self.width) # cifar10 images have shape 32x32 and 3 rgb channels
         fcs = [nn.Linear(self.width, self.width) for i in range(self.depth-2)]
         self.fcs = nn.ModuleList(fcs)
         self.fc_embeddings = nn.Linear(self.width, self.width)

@@ -12,8 +12,6 @@ parameters:
     values: [10, 15, 20, 25, 30, 35, 40, 45, 50]
   learning_rate:
     values: [1e-4]
-  width:
-    values: [900]
   epochs:
     values: [100]
   lbe_threshold:
