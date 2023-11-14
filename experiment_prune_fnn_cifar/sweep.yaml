@@ -2,8 +2,8 @@ program: train.py
 method: grid
 project: "lbe_prune"
 entity: maxdanelli
-name: "Experiment FNN - LBE prune: retraining after pruning"
-description: "Training of FNN with final pruning; grid search over network depths (range 10 - 50) and lbe_threshold values"
+name: "Experiment FNN - LBE prune: retraining after pruning with MNIST"
+description: "Training of FNN with final pruning; grid search over network depths (range 10 - 50) and lbe_threshold values; training on Cifar10"
 metric:
   name: test/accuracy
   goal: maximize
