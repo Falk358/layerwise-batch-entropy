@@ -162,6 +162,53 @@ class AverageMeter(object):
         self.count += num
         self.avg = self.sum / self.count
 
+
+
+def get_activations_before_residual(model, train_dataloader) -> dict:
+    """
+    returns activations before residual connection per layer as a dictionary:
+    keys: stage1 (contains activations in stage 1 of resnet), stage2. stage3
+    values: list of activations in that stage, ordered by layer number within the stage
+    """
+    sample_x, _ = next(iter(train_dataloader))
+
+    activations_per_stage = {"stage1": [], "stage2": [], "stage3": []}
+
+    def getActivation(stage:str, activation_per_stage:dict):
+        def hook(model, input, output):
+            activation_per_stage[stage].append(output.detach())  # detach prevents gradients to be propagated to activations
+        return hook
+    
+
+    stage1_layer_counter = 1
+    # attach hooks for all stages
+    for block1 in model.stage1:
+        hook1_handle = block1.bn2.register_forward_hook(getActivation("stage1"))
+    
+    for block2 in model.stage2:
+        hook2_handle = block2.bn2.register_forward_hook(getActivation("stage2"))
+
+    for block3 in model.stage3:
+        hook3_handle = block3.bn2.register_forward_hook(getActivation("stage3"))
+
+    model(sample_x) # compute forward pass, activations should be saved now
+
+    hook1_handle.remove()
+    hook2_handle.remove()
+    hook3_handle.remove()
+    
+    return activations_per_stage
+
+
+def prune(model, train_dataloader, lbe_threshold):
+    """
+    prunes the model using layerwise batch entropy
+    """
+    pass
+
+
+
+
 def train(epoch, model, optimizer, criterion, train_loader):
     global global_step
     global seen_samples
