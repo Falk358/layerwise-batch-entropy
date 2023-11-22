@@ -4,7 +4,6 @@ import torch
 import copy
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.utils.prune as prune
 import torch.optim as optim
 import torch_optimizer as optim_special
 from torchvision import datasets, transforms
@@ -185,20 +184,18 @@ def prune_lbe(model, lbe_threshold, train_loader, device):
         batch_entropy_at_layer = batch_entropy(activations_at_layer)
         layerwise_batch_entropy.append(batch_entropy_at_layer)
 
+    assert len(model.fcs) == len(layerwise_batch_entropy)
     log_data = []
-    log_columns = ["layer_index", "layerwise_batch_entropy", "was removed from original Network"]
     for layer_index, layer in enumerate(model.fcs):
         removed = False
         entropy = layerwise_batch_entropy[layer_index]
         if entropy < lbe_threshold:
-            prune.random_unstructured(layer, "weight", amount = 1.0)
-            prune.random_unstructured(layer, "bias", amount = 1.0)
-            prune.remove(layer, "weight")
-            prune.remove(layer, "bias")
+            model.fcs[layer_index] = nn.Identity()
             removed = True
         print(f"batch entropy at layer {layer_index+1}: {entropy}; threshold is {lbe_threshold}; was removed: {removed}\n")
-        log_data.append([layer_index+1, entropy, removed])
+        log_data.append([layer_index, entropy, removed])
     
+    log_columns = ["layer_index", "layerwise_batch_entropy", "was removed from original Network"]
     log_table = wandb.Table(data = log_data, columns=log_columns)
     wandb.log(
         {
