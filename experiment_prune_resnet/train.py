@@ -186,13 +186,13 @@ def get_activations_before_residual(model, train_dataloader) -> dict:
     stage1_layer_counter = 1
     # attach hooks for all stages
     for block1 in model.stage1:
-        hook1_handle = block1.bn2.register_forward_hook(getActivation("stage1"))
+        hook1_handle = block1.bn2.register_forward_hook(getActivation("stage1",activations_per_stage))
     
     for block2 in model.stage2:
-        hook2_handle = block2.bn2.register_forward_hook(getActivation("stage2"))
+        hook2_handle = block2.bn2.register_forward_hook(getActivation("stage2",activations_per_stage))
 
     for block3 in model.stage3:
-        hook3_handle = block3.bn2.register_forward_hook(getActivation("stage3"))
+        hook3_handle = block3.bn2.register_forward_hook(getActivation("stage3",activations_per_stage))
 
     model(sample_x) # compute forward pass, activations should be saved now
 
@@ -203,7 +203,7 @@ def get_activations_before_residual(model, train_dataloader) -> dict:
     return activations_per_stage
 
 
-def prune_lbe(model, train_dataloader, lbe_threshold, model_config):
+def prune_lbe(model, train_dataloader, lbe_threshold):
     """
     prunes the model using layerwise batch entropy
     """
@@ -260,7 +260,6 @@ def prune_lbe(model, train_dataloader, lbe_threshold, model_config):
 
     wandb.log(
         {
-            "prune/starting_depth": model_config["depth"],
             "prune/lbe_threshold": lbe_threshold,
             "prune/removed_layers_stage1": removed_count_stage1,
             "prune/removed_layers_stage2": removed_count_stage2,
@@ -353,7 +352,7 @@ def train(epoch, model, optimizer, criterion, train_loader):
 
 
 test_acc_sliding = {}
-def test(name, epoch, model, criterion, test_loader):
+def test(name, epoch, model, criterion, test_loader, log_no_seen_samples = False):
     global test_acc_sliding
     test_acc_sliding[name] = [] if name not in test_acc_sliding else test_acc_sliding[name]
 
@@ -390,10 +389,16 @@ def test(name, epoch, model, criterion, test_loader):
     elapsed = time.time() - start
     logger.info('Elapsed {:.2f}'.format(elapsed))
 
-    wandb.log({
-        f"{name}/loss": loss_meter.avg,
-        f"{name}/accuracy": np.mean(test_acc_sliding[name]),
-    }, step=seen_samples)
+    if log_no_seen_samples:
+        wandb.log({
+            f"{name}/loss": loss_meter.avg,
+            f"{name}/accuracy": np.mean(test_acc_sliding[name]),
+        })
+    else:
+        wandb.log({
+            f"{name}/loss": loss_meter.avg,
+            f"{name}/accuracy": np.mean(test_acc_sliding[name]),
+        }, step=seen_samples)
 
 
 
@@ -454,8 +459,8 @@ def main():
         test("test", epoch, model, criterion, test_loader)
     
     model_pruned = prune_lbe(model=model, lbe_threshold= optim_config["lbe_threshold"], train_dataloader=train_loader)
-    test("prune_eval", optim_config['epochs'] + 1, model_pruned, criterion, eval_loader)
-    test("prune_test", optim_config['epochs'] + 1, model_pruned, criterion, test_loader)
+    test("prune_eval", optim_config['epochs'] + 1, model_pruned, criterion, eval_loader, log_no_seen_samples=True)
+    test("prune_test", optim_config['epochs'] + 1, model_pruned, criterion, test_loader, log_no_seen_samples=True)
     
 
 
