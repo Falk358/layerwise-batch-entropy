@@ -75,6 +75,7 @@ def parse_args():
                     help='Desired entropy at the beginning of trainig.')
     parser.add_argument('--lbe_beta', type=float, default=0.0,
                     help='Weight lbe loss.')
+    parser.add_argument('--lbe_threshold', type=float, default=0.2, help='threshold of layerwise batch entropy chosen for pruning (removing) layers; values lower are removed')
 
     args = parser.parse_args()
 
@@ -171,6 +172,7 @@ def get_activations_before_residual(model, train_dataloader) -> dict:
     values: list of activations in that stage, ordered by layer number within the stage
     """
     sample_x, _ = next(iter(train_dataloader))
+    sample_x = sample_x.cuda()
 
     activations_per_stage = {"stage1": [], "stage2": [], "stage3": []}
 
@@ -200,11 +202,70 @@ def get_activations_before_residual(model, train_dataloader) -> dict:
     return activations_per_stage
 
 
-def prune(model, train_dataloader, lbe_threshold):
+def prune_lbe(model, train_dataloader, lbe_threshold):
     """
     prunes the model using layerwise batch entropy
     """
-    pass
+    activations_per_stage = get_activations_before_residual(model, train_dataloader)
+
+    assert(len(model.stage1) == len(activations_per_stage["stage1"]))
+    assert(len(model.stage2) == len(activations_per_stage["stage2"]))
+    assert(len(model.stage3) == len(activations_per_stage["stage3"]))
+    
+    layerwise_batch_entropy_stage1 = []
+    for activations_at_layer in activations_per_stage["stage1"]:
+        batch_entropy_at_layer = batch_entropy(activations_at_layer)
+        layerwise_batch_entropy_stage1.append(batch_entropy_at_layer)
+
+    layerwise_batch_entropy_stage2 = []
+    for activations_at_layer in activations_per_stage["stage2"]:
+        batch_entropy_at_layer = batch_entropy(activations_at_layer)
+        layerwise_batch_entropy_stage2.append(batch_entropy_at_layer)
+
+    layerwise_batch_entropy_stage3 = []
+    for activations_at_layer in activations_per_stage["stage3"]:
+        batch_entropy_at_layer = batch_entropy(activations_at_layer)
+        layerwise_batch_entropy_stage3.append(batch_entropy_at_layer)
+
+    assert(len(model.stage1) == len(layerwise_batch_entropy_stage1))
+    assert(len(model.stage2) == len(layerwise_batch_entropy_stage2))
+    assert(len(model.stage3) == len(layerwise_batch_entropy_stage3))
+    
+    removed_count_stage1 = 0
+    removed_count_stage2 = 0
+    removed_count_stage3 = 0
+
+    for layer_index, layer in enumerate(model.stage1):
+        entropy = layerwise_batch_entropy_stage1[layer_index]
+        if entropy < lbe_threshold:
+            model.stage1[layer_index] = nn.Identity()
+            removed_count_stage1 += 1
+
+    for layer_index, layer in enumerate(model.stage2):
+        entropy = layerwise_batch_entropy_stage2[layer_index]
+        if entropy < lbe_threshold:
+            model.stage2[layer_index] = nn.Identity()
+            removed_count_stage2 += 1
+
+    for layer_index, layer in enumerate(model.stage3):
+        entropy = layerwise_batch_entropy_stage3[layer_index]
+        if entropy < lbe_threshold:
+            model.stage3[layer_index] = nn.Identity()
+            removed_count_stage3 += 1
+    
+    removed_count_total = removed_count_stage1 + removed_count_stage2 + removed_count_stage3
+
+    wandb.log(
+        {
+            "prune/lbe_threshold": lbe_threshold,
+            "prune/removed_layers_stage1": removed_count_stage1,
+            "prune/removed_layers_stage2": removed_count_stage2,
+            "prune/removed_layers_stage3": removed_count_stage3,
+            "prune/removed_layers_total": removed_count_total,
+        }
+    )
+    
+    return model
 
 
 
@@ -362,7 +423,7 @@ def main():
     lbe_alpha = optim_config["lbe_alpha"]
     lbe_beta = optim_config["lbe_beta"]
     num_layers = (len(model.stage1) + len(model.stage2) + len(model.stage3)) + 2
-    criterion = LBELoss(num_layers,lbe_alpha=lbe_alpha+0.2, lbe_alpha_min=lbe_alpha, lbe_beta=lbe_beta) if lbe_beta != 0.0 else CELoss()
+    criterion = CELoss() # only use regular cross entropy to test one method only
     params = list(model.parameters()) + list(criterion.parameters())
 
     # optimizer
@@ -387,6 +448,11 @@ def main():
         train(epoch, model, optimizer, criterion, train_loader)
         test("eval", epoch, model, criterion, eval_loader)
         test("test", epoch, model, criterion, test_loader)
+    
+    model_pruned = prune_lbe(model=model, lbe_threshold= args.lbe_threshold, train_dataloader=train_loader)
+    test("eval", epoch, model_pruned, criterion, eval_loader)
+    test("test", epoch, model_pruned, criterion, test_loader)
+    
 
 
 if __name__ == '__main__':
