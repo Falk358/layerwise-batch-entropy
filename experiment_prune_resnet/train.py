@@ -81,9 +81,9 @@ def parse_args():
 
     wandb.init(config=args)
 
-    if((args.lbe_alpha == 0 and args.lbe_beta != 0) or (args.lbe_alpha != 0 and args.lbe_beta == 0)):
-        wandb.finish(exit_code=0)
-        exit()
+   # if((args.lbe_alpha == 0 and args.lbe_beta != 0) or (args.lbe_alpha != 0 and args.lbe_beta == 0)):
+   #     wandb.finish(exit_code=0)
+   #     exit()
 
     if args.block_type == "basic" and args.lbe_beta > 0.0:
         args.block_type = "basic_lbe"
@@ -120,6 +120,7 @@ def parse_args():
         ('lr_decay', args.lr_decay),
         ('lbe_beta', args.lbe_beta),
         ('lbe_alpha', args.lbe_alpha),
+        ('lbe_threshold', args.lbe_threshold),
     ])
 
     data_config = OrderedDict([
@@ -202,11 +203,13 @@ def get_activations_before_residual(model, train_dataloader) -> dict:
     return activations_per_stage
 
 
-def prune_lbe(model, train_dataloader, lbe_threshold):
+def prune_lbe(model, train_dataloader, lbe_threshold, model_config):
     """
     prunes the model using layerwise batch entropy
     """
+    print("before getting activation")
     activations_per_stage = get_activations_before_residual(model, train_dataloader)
+    print("after getting activation")
 
     assert(len(model.stage1) == len(activations_per_stage["stage1"]))
     assert(len(model.stage2) == len(activations_per_stage["stage2"]))
@@ -257,11 +260,12 @@ def prune_lbe(model, train_dataloader, lbe_threshold):
 
     wandb.log(
         {
+            "prune/starting_depth": model_config["depth"],
             "prune/lbe_threshold": lbe_threshold,
             "prune/removed_layers_stage1": removed_count_stage1,
             "prune/removed_layers_stage2": removed_count_stage2,
             "prune/removed_layers_stage3": removed_count_stage3,
-            "prune/removed_layers_total": removed_count_total,
+            "prune/removed_layers_total": removed_count_total
         }
     )
     
@@ -449,9 +453,9 @@ def main():
         test("eval", epoch, model, criterion, eval_loader)
         test("test", epoch, model, criterion, test_loader)
     
-    model_pruned = prune_lbe(model=model, lbe_threshold= args.lbe_threshold, train_dataloader=train_loader)
-    test("eval", epoch, model_pruned, criterion, eval_loader)
-    test("test", epoch, model_pruned, criterion, test_loader)
+    model_pruned = prune_lbe(model=model, lbe_threshold= optim_config["lbe_threshold"], train_dataloader=train_loader)
+    test("prune_eval", optim_config['epochs'] + 1, model_pruned, criterion, eval_loader)
+    test("prune_test", optim_config['epochs'] + 1, model_pruned, criterion, test_loader)
     
 
 
