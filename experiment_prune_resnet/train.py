@@ -194,7 +194,10 @@ def get_activations_before_residual(model, train_dataloader) -> dict:
     for block3 in model.stage3:
         hook3_handle = block3.bn2.register_forward_hook(getActivation("stage3",activations_per_stage))
 
-    model(sample_x) # compute forward pass, activations should be saved now
+    model.eval()
+    with torch.no_grad():
+        model(sample_x) # compute forward pass, activations should be saved now
+    
 
     hook1_handle.remove()
     hook2_handle.remove()
@@ -257,6 +260,8 @@ def prune_lbe(model, train_dataloader, lbe_threshold):
             removed_count_stage3 += 1
     
     removed_count_total = removed_count_stage1 + removed_count_stage2 + removed_count_stage3
+    
+    plot_lbe_per_layer(layerwise_batch_entropy_stage1, layerwise_batch_entropy_stage2, layerwise_batch_entropy_stage3)
 
     wandb.log(
         {
@@ -270,7 +275,25 @@ def prune_lbe(model, train_dataloader, lbe_threshold):
     
     return model
 
+def plot_lbe_per_layer(layerwise_batch_entropy_stage1: list, layerwise_batch_entropy_stage2: list, layerwise_batch_entropy_stage3: list):
+    """
+    input: lists containing the layerwise batch entropies at each resnet stage, creates datastructure for plotting lbe at layer in wandb and logs it
+    """
+    layerwise_batch_entropy_total = []
 
+    layerwise_batch_entropy_total.extend(layerwise_batch_entropy_stage1)
+    layerwise_batch_entropy_total.extend(layerwise_batch_entropy_stage2)
+    layerwise_batch_entropy_total.extend(layerwise_batch_entropy_stage3)
+
+    data_lbe_plot = [[layer_index, lbe] for (layer_index, lbe) in enumerate(layerwise_batch_entropy_total)]
+
+    lbe_table = wandb.Table(data=data_lbe_plot, columns=["layer_index", "lbe"])
+
+    wandb.log(
+        {
+            "lbe_plot": wandb.plot.line(table=lbe_table, x ="Index of Layer", y="Batch Entropy at Layer", title="Batch Entropy at each layer")
+        }
+    )
 
 
 def train(epoch, model, optimizer, criterion, train_loader):
@@ -459,9 +482,8 @@ def main():
         test("test", epoch, model, criterion, test_loader)
     
     model_pruned = prune_lbe(model=model, lbe_threshold= optim_config["lbe_threshold"], train_dataloader=train_loader)
-    test("prune_eval", optim_config['epochs'] + 1, model_pruned, criterion, eval_loader, log_no_seen_samples=True)
-    test("prune_test", optim_config['epochs'] + 1, model_pruned, criterion, test_loader, log_no_seen_samples=True)
     
+    test("prune_test", optim_config['epochs'] + 1, model_pruned, criterion, test_loader, log_no_seen_samples=True)
 
 
 if __name__ == '__main__':
